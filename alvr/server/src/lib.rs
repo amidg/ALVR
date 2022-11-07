@@ -312,17 +312,19 @@ pub unsafe extern "C" fn HmdDriverFactory(
         }
     }
 
-    extern "C" fn video_send(header: VideoFrame, buffer_ptr: *mut u8, len: i32) {
+    extern "C" fn video_send(timestamp_ns: u64, buffer_ptr: *mut u8, len: i32) {
         if let Some(sender) = &*VIDEO_SENDER.lock() {
-            let header = VideoFrameHeaderPacket {
-                packet_counter: header.packetCounter,
-                tracking_frame_index: header.trackingFrameIndex,
-                video_frame_index: header.videoFrameIndex,
-                sent_time: header.sentTime,
-                frame_byte_size: header.frameByteSize,
-                fec_index: header.fecIndex,
-                fec_percentage: header.fecPercentage,
-            };
+            // let header = VideoFrameHeaderPacket {
+            //     packet_counter: header.packetCounter,
+            //     timestamp: header.trackingFrameIndex,
+            //     video_frame_index: header.videoFrameIndex,
+            //     sent_time: header.sentTime,
+            //     frame_byte_size: header.frameByteSize,
+            //     fec_index: header.fecIndex,
+            //     fec_percentage: header.fecPercentage,
+            // };
+
+            error!("video payload size: {}", len);
 
             let mut vec_buffer = vec![0; len as _];
 
@@ -333,8 +335,9 @@ pub unsafe extern "C" fn HmdDriverFactory(
 
             sender
                 .send(VideoPacket {
-                    header,
-                    payload: vec_buffer,
+                    timestamp: Duration::from_nanos(timestamp_ns),
+                    shards_count: 1,
+                    shard_index: 0,
                 })
                 .ok();
 

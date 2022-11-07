@@ -6,8 +6,8 @@ use crate::{
     sockets::AnnouncerSocket,
     statistics::StatisticsManager,
     storage::Config,
-    AlvrEvent, VideoFrame, CONTROL_CHANNEL_SENDER, DISCONNECT_NOTIFIER, EVENT_QUEUE, IS_ALIVE,
-    IS_RESUMED, IS_STREAMING, STATISTICS_MANAGER, STATISTICS_SENDER, TRACKING_SENDER,
+    AlvrEvent, CONTROL_CHANNEL_SENDER, DISCONNECT_NOTIFIER, EVENT_QUEUE, IS_ALIVE, IS_RESUMED,
+    IS_STREAMING, STATISTICS_MANAGER, STATISTICS_SENDER, TRACKING_SENDER,
 };
 use alvr_audio::{AudioDevice, AudioDeviceType};
 use alvr_common::{glam::UVec2, prelude::*, ALVR_VERSION};
@@ -25,7 +25,7 @@ use glyph_brush_layout::{
 };
 use serde_json as json;
 use settings_schema::Switch;
-use std::{future, net::IpAddr, sync::Arc, thread, time::Duration};
+use std::{ffi::c_char, future, net::IpAddr, sync::Arc, thread, time::Duration};
 use tokio::{
     runtime::Runtime,
     sync::{mpsc as tmpsc, Mutex},
@@ -476,36 +476,48 @@ async fn stream_pipeline(
                     break Ok(());
                 }
 
-                let header = VideoFrame {
-                    packetCounter: packet.header.packet_counter,
-                    trackingFrameIndex: packet.header.tracking_frame_index,
-                    videoFrameIndex: packet.header.video_frame_index,
-                    sentTime: packet.header.sent_time,
-                    frameByteSize: packet.header.frame_byte_size,
-                    fecIndex: packet.header.fec_index,
-                    fecPercentage: packet.header.fec_percentage,
-                };
-
-                if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
-                    stats.report_video_packet_received(Duration::from_nanos(
-                        packet.header.tracking_frame_index,
-                    ));
-                }
-
-                let mut fec_failure = false;
-                unsafe {
-                    crate::processNalPacket(
-                        header,
-                        packet.buffer.as_ptr(),
-                        packet.buffer.len() as _,
-                        &mut fec_failure,
-                    )
-                };
-                if fec_failure {
-                    if let Some(sender) = &*CONTROL_CHANNEL_SENDER.lock() {
-                        sender.send(ClientControlPacket::VideoErrorReport).ok();
+                if packet.had_packet_loss {
+                    if let Some(sender) = &*crate::CONTROL_CHANNEL_SENDER.lock() {
+                        sender
+                            .send(alvr_sockets::ClientControlPacket::RequestIdr)
+                            .ok();
                     }
                 }
+
+                // let header = VideoFrame {
+                //     packetCounter: packet.header.packet_counter,
+                //     trackingFrameIndex: packet.header.tracking_frame_index,
+                //     videoFrameIndex: packet.header.video_frame_index,
+                //     sentTime: packet.header.sent_time,
+                //     frameByteSize: packet.header.frame_byte_size,
+                //     fecIndex: packet.header.fec_index,
+                //     fecPercentage: packet.header.fec_percentage,
+                // };
+
+                if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
+                    stats.report_video_packet_received(packet.header.timestamp);
+                }
+
+                decoder::push_nal(
+                    packet.buffer.as_ptr() as *const c_char,
+                    packet.buffer.len() as _,
+                    packet.header.timestamp.as_nanos() as _,
+                )
+
+                // let mut fec_failure = false;
+                // unsafe {
+                //     crate::processNalPacket(
+                //         header,
+                //         packet.buffer.as_ptr(),
+                //         packet.buffer.len() as _,
+                //         &mut fec_failure,
+                //     )
+                // };
+                // if fec_failure {
+                //     if let Some(sender) = &*CONTROL_CHANNEL_SENDER.lock() {
+                //         sender.send(ClientControlPacket::VideoErrorReport).ok();
+                //     }
+                // }
             }
         }
     };
