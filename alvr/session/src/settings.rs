@@ -136,7 +136,7 @@ pub struct LatencyUseFrametimeDesc {
 #[derive(SettingsSchema, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AdaptiveBitrateDesc {
-    #[schema(min = 10, max = 500, step = 1)]
+    #[schema(min = 10, max = 1000, step = 1)]
     pub bitrate_maximum: u64,
 
     #[schema(advanced, min = 1000, max = 25000, step = 500)]
@@ -270,7 +270,7 @@ pub struct VideoDesc {
     #[schema(advanced)]
     pub sw_thread_count: u32,
 
-    #[schema(min = 1, max = 500)]
+    #[schema(min = 1, max = 1000)]
     pub encode_bitrate_mbs: u64,
 
     pub adaptive_bitrate: Switch<AdaptiveBitrateDesc>,
@@ -578,8 +578,9 @@ pub struct ConnectionDesc {
     #[schema(advanced)]
     pub on_disconnect_script: String,
 
-    #[schema(advanced)]
-    pub enable_fec: bool,
+    // Max packet size is 64KB for TCP and 65507 bytes for UDP
+    #[schema(advanced, min = 0, max = 0xFFFF)]
+    pub packet_size: i32,
 
     #[schema(advanced)]
     pub statistics_history_size: u64,
@@ -904,7 +905,7 @@ pub fn session_settings_default() -> SettingsDefault {
             aggressive_keyframe_resend: false,
             on_connect_script: "".into(),
             on_disconnect_script: "".into(),
-            enable_fec: true,
+            packet_size: 1400,
             statistics_history_size: 256,
         },
         extra: ExtraDescDefault {
